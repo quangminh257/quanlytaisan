@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # 1. Ứng dụng Web Quản lý Tài sản (Nginx)
+  web:
+    image: nginx:alpine
+    container_name: web_asset_app
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./app:/usr/share/nginx/html
+    depends_on:
+      - db
+    networks:
+      - app_network
+
+  # 2. Cơ sở dữ liệu MySQL (Khớp 100% tài khoản bài tập)
+  db:
+    image: mysql:8.0
+    container_name: db_mysql
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: RootPassword123!
+      MYSQL_DATABASE: quanlytaisan
+      MYSQL_USER: qltauser
+      MYSQL_PASSWORD: UserPass123!
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app_network
+
+  # 3. Quản trị CSDL phpMyAdmin (Cổng 8081)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: phpmyadmin_panel
+    restart: always
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: qltauser
+      PMA_PASSWORD: UserPass123!
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
+    networks:
+      - app_network
+
+  # 4. Giám sát hệ thống Prometheus (Cổng 9090)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_monitor
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - app_network
+
+  # 5. Bảng điều khiển Grafana (Cổng 3000)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_dashboard
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - db
+    networks:
+      - app_network
+
+  # 6. Thu thập log tập trung Loki (Cổng 3100)
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: loki_service
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki:/etc/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - app_network
+
+
+  promtail:
+    image: grafana/promtail:2.9.2
+    container_name: promtail_collector
+    restart: always
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail:/etc/promtail
+    networks:
+      - app_network
+
+volumes:
+  mysql_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  app_network:
+    driver: bridge
